@@ -13,7 +13,7 @@ extern crate crossbeam;
 extern crate scopeguard;
 
 use variance::InvariantLifetime as Id;
-use crossbeam::sync::MsQueue;
+use crossbeam::queue::SegQueue;
 
 use std::{thread, mem};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -166,46 +166,49 @@ impl Pool {
 
         loop {
             match self.inner.queue.pop() {
-                // On Quit, repropogate and quit.
-                PoolMessage::Quit => {
-                    // Repropogate the Quit message to other threads.
-                    self.inner.queue.push(PoolMessage::Quit);
+                Ok(e) => match e {
+                    // On Quit, repropogate and quit.
+                    PoolMessage::Quit => {
+                        // Repropogate the Quit message to other threads.
+                        self.inner.queue.push(PoolMessage::Quit);
 
-                    // Cancel the thread sentinel so we don't panic waiting
-                    // shutdown threads, and don't restart the thread.
-                    thread_sentinel.cancel();
+                        // Cancel the thread sentinel so we don't panic waiting
+                        // shutdown threads, and don't restart the thread.
+                        thread_sentinel.cancel();
 
-                    // Terminate the thread.
-                    break
+                        // Terminate the thread.
+                        break
+                    },
+
+                    // On Task, run the task then complete the WaitGroup.
+                    PoolMessage::Task(job, wait) => {
+                        let sentinel = Sentinel(self.clone(), Some(wait.clone()));
+                        job.run();
+                        sentinel.cancel();
+                    }
                 },
-
-                // On Task, run the task then complete the WaitGroup.
-                PoolMessage::Task(job, wait) => {
-                    let sentinel = Sentinel(self.clone(), Some(wait.clone()));
-                    job.run();
-                    sentinel.cancel();
-                }
+                Err(_) => continue,
             }
         }
     }
 }
 
 struct PoolInner {
-    queue: MsQueue<PoolMessage>,
+    queue: SegQueue<PoolMessage>,
     thread_config: ThreadConfig,
     thread_counter: AtomicUsize
 }
 
 impl PoolInner {
     fn with_thread_config(thread_config: ThreadConfig) -> Self {
-        PoolInner { thread_config: thread_config, ..Self::default() }
+        PoolInner { thread_config, ..Self::default() }
     }
 }
 
 impl Default for PoolInner {
     fn default() -> Self {
         PoolInner {
-            queue: MsQueue::new(),
+            queue: SegQueue::new(),
             thread_config: ThreadConfig::default(),
             thread_counter: AtomicUsize::new(1)
         }
@@ -279,7 +282,7 @@ impl<'scope> Scope<'scope> {
     #[inline]
     pub fn forever(pool: Pool) -> Scope<'static> {
         Scope {
-            pool: pool,
+            pool,
             wait: Arc::new(WaitGroup::new()),
             _scope: Id::default()
         }
@@ -296,8 +299,8 @@ impl<'scope> Scope<'scope> {
         let task = unsafe {
             // Safe because we will ensure the task finishes executing before
             // 'scope via joining before the resolution of `'scope`.
-            mem::transmute::<Box<Task + Send + 'scope>,
-                             Box<Task + Send + 'static>>(Box::new(job))
+            mem::transmute::<Box<dyn Task + Send + 'scope>,
+                             Box<dyn Task + Send + 'static>>(Box::new(job))
         };
 
         // Submit the task to be executed.
@@ -322,7 +325,7 @@ impl<'scope> Scope<'scope> {
     pub fn zoom<'smaller, F, R>(&self, scheduler: F) -> R
     where F: FnOnce(&Scope<'smaller>) -> R,
           'scope: 'smaller {
-        let scope = unsafe { self.refine::<'smaller>() };
+        let scope = unsafe { self.refine() };
 
         // Join the scope either on completion of the scheduler or panic.
         defer!(scope.join());
@@ -363,7 +366,7 @@ impl<'scope> Scope<'scope> {
 
 enum PoolMessage {
     Quit,
-    Task(Box<Task + Send>, Arc<WaitGroup>)
+    Task(Box<dyn Task + Send>, Arc<WaitGroup>)
 }
 
 /// A synchronization primitive for awaiting a set of actions.
@@ -466,13 +469,17 @@ struct Sentinel(Pool, Option<Arc<WaitGroup>>);
 
 impl Sentinel {
     fn cancel(mut self) {
-        self.1.take().map(|wait| wait.complete());
+        if let Some(wait) = self.1.take() {
+            wait.complete()
+        }
     }
 }
 
 impl Drop for Sentinel {
     fn drop(&mut self) {
-        self.1.take().map(|wait| wait.poison());
+        if let Some(wait) = self.1.take() {
+            wait.poison()
+        }
     }
 }
 
@@ -480,15 +487,15 @@ struct ThreadSentinel(Option<Pool>);
 
 impl ThreadSentinel {
     fn cancel(&mut self) {
-        self.0.take().map(|pool| {
+        if let Some(pool) = self.0.take() {
             pool.wait.complete();
-        });
+        }
     }
 }
 
 impl Drop for ThreadSentinel {
     fn drop(&mut self) {
-        self.0.take().map(|pool| {
+        if let Some(pool) = self.0.take() {
             // NOTE: We restart the thread first so we don't accidentally
             // hit zero threads before restarting.
 
@@ -497,7 +504,7 @@ impl Drop for ThreadSentinel {
 
             // Poison the pool.
             pool.wait.poison();
-        });
+        }
     }
 }
 
