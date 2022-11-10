@@ -1,10 +1,10 @@
-extern crate scoped_pool;
+extern crate scoped_thread_pool;
 extern crate itertools;
 extern crate rand;
 
 use rand::Rng;
 
-use scoped_pool::{Pool, Scope};
+use scoped_thread_pool::{Pool, Scope};
 
 pub fn quicksort<T: Send + Sync + Ord>(pool: &Pool, data: &mut [T]) {
     pool.scoped(move |scoped| do_quicksort(scoped, data))
