@@ -166,7 +166,7 @@ impl Pool {
 
         loop {
             match self.inner.queue.pop() {
-                Ok(e) => match e {
+                Some(e) => match e {
                     // On Quit, repropogate and quit.
                     PoolMessage::Quit => {
                         // Repropogate the Quit message to other threads.
@@ -187,7 +187,7 @@ impl Pool {
                         sentinel.cancel();
                     }
                 },
-                Err(_) => continue,
+                None => continue,
             }
         }
     }
