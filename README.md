@@ -1,17 +1,17 @@
-# scoped-pool
+# scoped-thread-pool
 
 > A flexible thread pool providing scoped and static threads.
 
-## [Documentation](https://docs.rs/scoped-pool)
+## [Documentation](https://docs.rs/scoped-thread-pool)
 
 ## Overview
 
 Example of simple use (applying a transformation to every item in an array):
 
 ```rust
-extern crate scoped_pool;
+extern crate scoped_thread_pool;
 
-use scoped_pool::Pool;
+use scoped_thread_pool::Pool;
 
 let pool = Pool::new(4);
 
@@ -65,12 +65,12 @@ with the rest of your dependencies:
 
 ```toml
 [dependencies]
-scoped-pool = "1"
+scoped-thread-pool = "1.0.1"
 ```
 
 ## Author
 
-[Jonathan Reem](https://medium.com/@jreem) is the primary author and maintainer of scoped-pool.
+[Jonathan Reem](https://medium.com/@jreem) is the author of the original scoped-pool repository from which this repository is forked.
 
 ## License
 
