@@ -1,10 +1,10 @@
 [package]
 
-name = "scoped-pool"
-version = "1.0.0"
-authors = ["Jonathan Reem <jonathan.reem@gmail.com>"]
-repository = "https://github.com/reem/rust-scoped-pool.git"
-description = "A flexible thread pool providing scoped threads."
+name = "scoped-thread-pool"
+version = "1.0.1"
+authors = ["Mason Soroka-Gill <masonsorokagill@pm.me>"]
+repository = "https://github.com/SOROM2/rust-scoped-pool.git"
+description = "A flexible thread pool providing scoped threads. Updated fork of https://github.com/reem/rust-scoped-pool"
 readme = "README.md"
 license = "MIT"
 
