@@ -3,7 +3,7 @@
 name = "scoped-thread-pool"
 version = "1.0.1"
 authors = ["Mason Soroka-Gill <masonsorokagill@pm.me>"]
-repository = "https://github.com/SOROM2/rust-scoped-pool.git"
+repository = "https://github.com/SOROM2/scoped-thread-pool"
 description = "A flexible thread pool providing scoped threads. Updated fork of https://github.com/reem/rust-scoped-pool"
 readme = "README.md"
 license = "MIT"
