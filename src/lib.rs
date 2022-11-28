@@ -6,18 +6,18 @@
 //! A flexible thread pool providing scoped threads.
 //!
 
-extern crate variance;
 extern crate crossbeam;
+extern crate variance;
 
 #[macro_use]
 extern crate scopeguard;
 
-use variance::InvariantLifetime as Id;
 use crossbeam::queue::SegQueue;
+use variance::InvariantLifetime as Id;
 
-use std::{thread, mem};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Condvar, Mutex};
+use std::{mem, thread};
 
 /// A thread-pool providing scoped and unscoped threads.
 ///
@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex, Condvar};
 #[derive(Clone, Default)]
 pub struct Pool {
     wait: Arc<WaitGroup>,
-    inner: Arc<PoolInner>
+    inner: Arc<PoolInner>,
 }
 
 impl Pool {
@@ -46,7 +46,9 @@ impl Pool {
         let pool = Pool::empty();
 
         // Start the requested number of threads.
-        for _ in 0..size { pool.expand(); }
+        for _ in 0..size {
+            pool.expand();
+        }
 
         pool
     }
@@ -69,7 +71,9 @@ impl Pool {
         };
 
         // Start the requested number of threads.
-        for _ in 0..size { pool.expand(); }
+        for _ in 0..size {
+            pool.expand();
+        }
 
         pool
     }
@@ -112,7 +116,9 @@ impl Pool {
     /// will propogate to the calling thread.
     #[inline]
     pub fn scoped<'scope, F, R>(&self, scheduler: F) -> R
-    where F: FnOnce(&Scope<'scope>) -> R {
+    where
+        F: FnOnce(&Scope<'scope>) -> R,
+    {
         // Zoom to the correct scope, then run the scheduler.
         Scope::forever(self.clone()).zoom(scheduler)
     }
@@ -177,8 +183,8 @@ impl Pool {
                         thread_sentinel.cancel();
 
                         // Terminate the thread.
-                        break
-                    },
+                        break;
+                    }
 
                     // On Task, run the task then complete the WaitGroup.
                     PoolMessage::Task(job, wait) => {
@@ -196,12 +202,15 @@ impl Pool {
 struct PoolInner {
     queue: SegQueue<PoolMessage>,
     thread_config: ThreadConfig,
-    thread_counter: AtomicUsize
+    thread_counter: AtomicUsize,
 }
 
 impl PoolInner {
     fn with_thread_config(thread_config: ThreadConfig) -> Self {
-        PoolInner { thread_config, ..Self::default() }
+        PoolInner {
+            thread_config,
+            ..Self::default()
+        }
     }
 }
 
@@ -210,7 +219,7 @@ impl Default for PoolInner {
         PoolInner {
             queue: SegQueue::new(),
             thread_config: ThreadConfig::default(),
-            thread_counter: AtomicUsize::new(1)
+            thread_counter: AtomicUsize::new(1),
         }
     }
 }
@@ -274,7 +283,7 @@ impl ThreadConfig {
 pub struct Scope<'scope> {
     pool: Pool,
     wait: Arc<WaitGroup>,
-    _scope: Id<'scope>
+    _scope: Id<'scope>,
 }
 
 impl<'scope> Scope<'scope> {
@@ -284,7 +293,7 @@ impl<'scope> Scope<'scope> {
         Scope {
             pool,
             wait: Arc::new(WaitGroup::new()),
-            _scope: Id::default()
+            _scope: Id::default(),
         }
     }
 
@@ -292,19 +301,25 @@ impl<'scope> Scope<'scope> {
     ///
     /// Subsequent calls to `join` will wait for this job to complete.
     pub fn execute<F>(&self, job: F)
-    where F: FnOnce() + Send + 'scope {
+    where
+        F: FnOnce() + Send + 'scope,
+    {
         // Submit the job *before* submitting it to the queue.
         self.wait.submit();
 
         let task = unsafe {
             // Safe because we will ensure the task finishes executing before
             // 'scope via joining before the resolution of `'scope`.
-            mem::transmute::<Box<dyn Task + Send + 'scope>,
-                             Box<dyn Task + Send + 'static>>(Box::new(job))
+            mem::transmute::<Box<dyn Task + Send + 'scope>, Box<dyn Task + Send + 'static>>(
+                Box::new(job),
+            )
         };
 
         // Submit the task to be executed.
-        self.pool.inner.queue.push(PoolMessage::Task(task, self.wait.clone()));
+        self.pool
+            .inner
+            .queue
+            .push(PoolMessage::Task(task, self.wait.clone()));
     }
 
     /// Add a job to this scope which itself will get access to the scope.
@@ -312,7 +327,9 @@ impl<'scope> Scope<'scope> {
     /// Like with `execute`, subsequent calls to `join` will wait for this
     /// job (and all jobs scheduled on the scope it receives) to complete.
     pub fn recurse<F>(&self, job: F)
-    where F: FnOnce(&Self) + Send + 'scope {
+    where
+        F: FnOnce(&Self) + Send + 'scope,
+    {
         // Create another scope with the *same* lifetime.
         let this = unsafe { self.clone() };
 
@@ -323,8 +340,10 @@ impl<'scope> Scope<'scope> {
     ///
     /// The subscope has a different job set, and is joined before zoom returns.
     pub fn zoom<'smaller, F, R>(&self, scheduler: F) -> R
-    where F: FnOnce(&Scope<'smaller>) -> R,
-          'scope: 'smaller {
+    where
+        F: FnOnce(&Scope<'smaller>) -> R,
+        'scope: 'smaller,
+    {
         let scope = unsafe { self.refine() };
 
         // Join the scope either on completion of the scheduler or panic.
@@ -349,24 +368,27 @@ impl<'scope> Scope<'scope> {
         Scope {
             pool: self.pool.clone(),
             wait: self.wait.clone(),
-            _scope: Id::default()
+            _scope: Id::default(),
         }
     }
 
     // Create a new scope with a smaller lifetime on the same pool.
     #[inline]
-    unsafe fn refine<'other>(&self) -> Scope<'other> where 'scope: 'other {
+    unsafe fn refine<'other>(&self) -> Scope<'other>
+    where
+        'scope: 'other,
+    {
         Scope {
             pool: self.pool.clone(),
             wait: Arc::new(WaitGroup::new()),
-            _scope: Id::default()
+            _scope: Id::default(),
         }
     }
 }
 
 enum PoolMessage {
     Quit,
-    Task(Box<dyn Task + Send>, Arc<WaitGroup>)
+    Task(Box<dyn Task + Send>, Arc<WaitGroup>),
 }
 
 /// A synchronization primitive for awaiting a set of actions.
@@ -377,7 +399,7 @@ pub struct WaitGroup {
     pending: AtomicUsize,
     poisoned: AtomicBool,
     lock: Mutex<()>,
-    cond: Condvar
+    cond: Condvar,
 }
 
 impl Default for WaitGroup {
@@ -386,7 +408,7 @@ impl Default for WaitGroup {
             pending: AtomicUsize::new(0),
             poisoned: AtomicBool::new(false),
             lock: Mutex::new(()),
-            cond: Condvar::new()
+            cond: Condvar::new(),
         }
     }
 }
@@ -513,16 +535,18 @@ trait Task {
 }
 
 impl<F: FnOnce()> Task for F {
-    fn run(self: Box<Self>) { (*self)() }
+    fn run(self: Box<Self>) {
+        (*self)()
+    }
 }
 
 #[cfg(test)]
 mod test {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-    use std::time::Duration;
     use std::thread::sleep;
+    use std::time::Duration;
 
-    use {Pool, Scope, ThreadConfig};
+    use {crate::Pool, crate::Scope, crate::ThreadConfig};
 
     #[test]
     fn test_simple_use() {
@@ -643,7 +667,7 @@ mod test {
 
     struct Canary<'a> {
         drops: DropCounter<'a>,
-        expected: usize
+        expected: usize,
     }
 
     #[derive(Clone)]
@@ -676,7 +700,7 @@ mod test {
         // Actual check occurs on drop of this during unwinding.
         let _canary = Canary {
             drops: drops.clone(),
-            expected: expected_drops
+            expected: expected_drops,
         };
 
         let pool = Pool::new(12);
@@ -713,7 +737,7 @@ mod test {
 
         let _canary = Canary {
             drops: drops.clone(),
-            expected: tasks
+            expected: tasks,
         };
 
         let pool = Pool::new(12);
@@ -756,4 +780,3 @@ mod test {
         });
     }
 }
-

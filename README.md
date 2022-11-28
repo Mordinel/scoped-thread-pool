@@ -65,7 +65,7 @@ with the rest of your dependencies:
 
 ```toml
 [dependencies]
-scoped-thread-pool = "1.0.2"
+scoped-thread-pool = "1.0.3"
 ```
 
 ## Author
