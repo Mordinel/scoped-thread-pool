@@ -6,14 +6,15 @@ authors = ["Mason Soroka-Gill <masonsorokagill@pm.me>"]
 repository = "https://github.com/SOROM2/scoped-thread-pool"
 description = "A flexible thread pool providing scoped threads. Updated fork of https://github.com/reem/rust-scoped-pool"
 readme = "README.md"
+edition = "2021"
 license = "MIT"
 
 [dependencies]
 variance = "0.1"
 crossbeam = "0.8"
-scopeguard = "0.1"
+scopeguard = "1.1"
 
 [dev-dependencies]
-rand = "0.3"
-itertools = "0.4"
+rand = "0.8.5"
+itertools = "0.10"
 
