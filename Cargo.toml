@@ -1,9 +1,9 @@
 [package]
 
 name = "scoped-thread-pool"
-version = "1.0.3"
-authors = ["Mason Soroka-Gill <masonsorokagill@pm.me>"]
-repository = "https://github.com/SOROM2/scoped-thread-pool"
+version = "1.0.4"
+authors = ["Mason Soroka-Gill <mordinel@pm.me>"]
+repository = "https://github.com/Mordinel/scoped-thread-pool"
 description = "A flexible thread pool providing scoped threads. Updated fork of https://github.com/reem/rust-scoped-pool"
 readme = "README.md"
 edition = "2021"
