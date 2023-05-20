@@ -12,7 +12,7 @@ extern crate variance;
 #[macro_use]
 extern crate scopeguard;
 
-use crossbeam::queue::SegQueue;
+use crossbeam::channel::{Sender, Receiver, unbounded};
 use variance::InvariantLifetime as Id;
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -172,35 +172,55 @@ impl Pool {
 
         loop {
             match self.inner.queue.pop() {
-                Some(e) => match e {
-                    // On Quit, repropogate and quit.
-                    PoolMessage::Quit => {
-                        // Repropogate the Quit message to other threads.
-                        self.inner.queue.push(PoolMessage::Quit);
+                // On Quit, repropogate and quit.
+                PoolMessage::Quit => {
+                    // Repropogate the Quit message to other threads.
+                    self.inner.queue.push(PoolMessage::Quit);
 
-                        // Cancel the thread sentinel so we don't panic waiting
-                        // shutdown threads, and don't restart the thread.
-                        thread_sentinel.cancel();
+                    // Cancel the thread sentinel so we don't panic waiting
+                    // shutdown threads, and don't restart the thread.
+                    thread_sentinel.cancel();
 
-                        // Terminate the thread.
-                        break;
-                    }
+                    // Terminate the thread.
+                    break;
+                }
 
-                    // On Task, run the task then complete the WaitGroup.
-                    PoolMessage::Task(job, wait) => {
-                        let sentinel = Sentinel(self.clone(), Some(wait.clone()));
-                        job.run();
-                        sentinel.cancel();
-                    }
-                },
-                None => continue,
+                // On Task, run the task then complete the WaitGroup.
+                PoolMessage::Task(job, wait) => {
+                    let sentinel = Sentinel(self.clone(), Some(wait.clone()));
+                    job.run();
+                    sentinel.cancel();
+                }
             }
         }
     }
 }
 
+struct BlockingQueue<T> {
+    sender: Sender<T>,
+    receiver: Receiver<T>,
+}
+
+impl<T> BlockingQueue<T> {
+    fn new() -> BlockingQueue<T> {
+        let (tx, rx) = unbounded();
+        BlockingQueue {
+            sender: tx,
+            receiver: rx,
+        }
+    }
+
+    fn pop(&self) -> T {
+        self.receiver.recv().unwrap()
+    }
+
+    fn push(&self, message: T) {
+        self.sender.send(message).unwrap();
+    }
+}
+
 struct PoolInner {
-    queue: SegQueue<PoolMessage>,
+    queue: BlockingQueue<PoolMessage>,
     thread_config: ThreadConfig,
     thread_counter: AtomicUsize,
 }
@@ -217,7 +237,7 @@ impl PoolInner {
 impl Default for PoolInner {
     fn default() -> Self {
         PoolInner {
-            queue: SegQueue::new(),
+            queue: BlockingQueue::new(),
             thread_config: ThreadConfig::default(),
             thread_counter: AtomicUsize::new(1),
         }
